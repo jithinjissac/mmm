@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Bell, Check, X, AlertCircle, Info } from "lucide-react"
-import { useAuth } from "@/components/auth-provider"
+import { Bell, Check, X, AlertCircle, Info, Loader2 } from "lucide-react"
+import { useAuth } from "@/components/auth/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -132,6 +132,9 @@ export function NotificationList() {
   if (loading) {
     return (
       <div className="space-y-4">
+        <div className="flex justify-center items-center py-4">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
         {[...Array(3)].map((_, i) => (
           <Card key={i} className="animate-pulse">
             <CardHeader className="h-12 bg-gray-100 rounded-t-lg"></CardHeader>
