@@ -7,7 +7,7 @@ interface CircuitBreakerOptions {
   halfOpenSuccessThreshold: number
 }
 
-class CircuitBreaker {
+export class CircuitBreaker {
   private state: CircuitBreakerState = "CLOSED"
   private failureCount = 0
   private successCount = 0

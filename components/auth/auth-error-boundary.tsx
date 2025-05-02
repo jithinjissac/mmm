@@ -51,3 +51,6 @@ export function AuthErrorBoundary({ children }: AuthErrorBoundaryProps) {
 
   return <>{children}</>
 }
+
+// Add a default export that re-exports the named export
+export default AuthErrorBoundary
