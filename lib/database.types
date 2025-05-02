@@ -23,7 +23,7 @@ export type Database = {
         Insert: {
           id: string
           email: string
-          full_name?: string | null
+          full_name: string | null
           role: string
           phone?: string | null
           avatar_url?: string | null
@@ -183,7 +183,10 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      user_role: "admin" | "landlord" | "tenant" | "maintenance"
+      property_type: "apartment" | "apartment_building" | "house" | "studio" | "shared_house"
+      room_type: "single" | "double" | "ensuite" | "studio"
+      room_status: "vacant" | "occupied" | "maintenance" | "reserved"
     }
   }
 }
