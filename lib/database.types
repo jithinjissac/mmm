@@ -13,8 +13,8 @@ export type Database = {
         Row: {
           id: string
           email: string
-          full_name: string
-          role: "admin" | "landlord" | "tenant" | "maintenance"
+          full_name: string | null
+          role: string
           phone: string | null
           avatar_url: string | null
           created_at: string
@@ -23,8 +23,8 @@ export type Database = {
         Insert: {
           id: string
           email: string
-          full_name: string
-          role: "admin" | "landlord" | "tenant" | "maintenance"
+          full_name?: string | null
+          role: string
           phone?: string | null
           avatar_url?: string | null
           created_at?: string
@@ -33,8 +33,8 @@ export type Database = {
         Update: {
           id?: string
           email?: string
-          full_name?: string
-          role?: "admin" | "landlord" | "tenant" | "maintenance"
+          full_name?: string | null
+          role?: string
           phone?: string | null
           avatar_url?: string | null
           created_at?: string
@@ -116,11 +116,11 @@ export type Database = {
           id: string
           property_id: string
           name: string
-          room_type: "single" | "double" | "ensuite" | "studio"
+          room_type: string
           max_occupants: number
           rent: number
           deposit: number
-          status: "vacant" | "occupied" | "maintenance" | "reserved"
+          status: string
           description: string | null
           created_at: string
           updated_at: string
@@ -129,11 +129,11 @@ export type Database = {
           id?: string
           property_id: string
           name: string
-          room_type: "single" | "double" | "ensuite" | "studio"
+          room_type: string
           max_occupants?: number
           rent: number
           deposit: number
-          status?: "vacant" | "occupied" | "maintenance" | "reserved"
+          status?: string
           description?: string | null
           created_at?: string
           updated_at?: string
@@ -142,11 +142,11 @@ export type Database = {
           id?: string
           property_id?: string
           name?: string
-          room_type?: "single" | "double" | "ensuite" | "studio"
+          room_type?: string
           max_occupants?: number
           rent?: number
           deposit?: number
-          status?: "vacant" | "occupied" | "maintenance" | "reserved"
+          status?: string
           description?: string | null
           created_at?: string
           updated_at?: string
@@ -183,10 +183,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      user_role: "admin" | "landlord" | "tenant" | "maintenance"
-      property_type: "apartment" | "apartment_building" | "house" | "studio" | "shared_house"
-      room_type: "single" | "double" | "ensuite" | "studio"
-      room_status: "vacant" | "occupied" | "maintenance" | "reserved"
+      [_ in never]: never
     }
   }
 }

@@ -1,19 +1,20 @@
-import { Suspense } from "react"
-import { SignInWrapper } from "./signin-wrapper"
-import { Card, CardContent } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
+"use client"
 
-export default function SignInPage() {
-  return (
-    <div className="container flex h-screen flex-col items-center justify-center">
-      <Suspense fallback={<SignInSkeleton />}>
-        <SignInWrapper />
-      </Suspense>
-    </div>
-  )
+import dynamic from "next/dynamic"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Card, CardContent } from "@/components/ui/card"
+
+// Dynamically import the SignIn component with ssr: false
+const SignInClient = dynamic(() => import("./signin-client"), {
+  ssr: false,
+  loading: () => <SignInLoadingSkeleton />,
+})
+
+export function SignInWrapper() {
+  return <SignInClient />
 }
 
-function SignInSkeleton() {
+function SignInLoadingSkeleton() {
   return (
     <Card className="w-full max-w-sm">
       <CardContent className="pt-6">
