@@ -1,6 +1,6 @@
 "use client"
 
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/lib/auth/auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -12,124 +12,90 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { LogOut, Settings, User } from "lucide-react"
-import type { User as SupabaseUser } from "@supabase/supabase-js"
-import type { Database } from "@/lib/database.types"
-import { useEffect, useState } from "react"
-import { createClientSupabaseClient } from "@/lib/supabase/client"
+import { Loader2, LogOut, Settings, User } from "lucide-react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useState } from "react"
 
-type Profile = Database["public"]["Tables"]["profiles"]["Row"]
-type UserWithProfile = SupabaseUser & { profile: Profile | null }
+export function UserNav() {
+  const { user, profile, signOut, isLoading } = useAuth()
+  const router = useRouter()
+  const [isSigningOut, setIsSigningOut] = useState(false)
 
-type UserNavProps = {
-  user: UserWithProfile
-}
-
-export function UserNav({ user }: UserNavProps) {
-  const { signOut } = useAuth()
-  const [verifiedUser, setVerifiedUser] = useState<UserWithProfile | null>(null)
-  const supabase = createClientSupabaseClient()
-
-  // Verify user data on component mount
-  useEffect(() => {
-    const verifyUser = async () => {
-      try {
-        // Always verify user with getUser
-        const { data, error } = await supabase.auth.getUser()
-
-        if (error || !data.user) {
-          console.error("Error verifying user in UserNav:", error)
-          return
-        }
-
-        // If the user IDs match, use the provided user data
-        if (data.user.id === user.id) {
-          setVerifiedUser(user)
-        }
-      } catch (error) {
-        console.error("Error in UserNav verification:", error)
-      }
-    }
-
-    verifyUser()
-  }, [user, supabase])
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
+  const handleSignOut = async () => {
+    setIsSigningOut(true)
+    await signOut()
+    router.push("/")
+    setIsSigningOut(false)
   }
 
-  const getRoleLabel = (role: string | undefined) => {
-    // Default to tenant if role is undefined
-    const safeRole = role || "tenant"
-
-    switch (safeRole) {
-      case "admin":
-        return "Administrator"
-      case "landlord":
-        return "Landlord"
-      case "tenant":
-        return "Tenant"
-      case "maintenance":
-        return "Maintenance"
-      default:
-        return safeRole.charAt(0).toUpperCase() + safeRole.slice(1)
-    }
-  }
-
-  // If user verification is still in progress or failed, show minimal UI
-  if (!verifiedUser || !verifiedUser.profile) {
+  if (isLoading) {
     return (
-      <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-        <Avatar>
-          <AvatarFallback>?</AvatarFallback>
-        </Avatar>
-      </Button>
+      <div className="flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="text-sm">Loading...</span>
+      </div>
     )
   }
 
-  // Ensure we have a valid role for navigation
-  const userRole = verifiedUser.profile.role || "tenant"
+  if (!user) {
+    return (
+      <div className="flex items-center gap-2">
+        <Link href="/signin">
+          <Button variant="outline" size="sm">
+            Sign In
+          </Button>
+        </Link>
+        <Link href="/signup">
+          <Button size="sm">Sign Up</Button>
+        </Link>
+      </div>
+    )
+  }
+
+  const initials = profile?.full_name
+    ? profile.full_name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+    : user.email?.charAt(0).toUpperCase() || "U"
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-          <Avatar>
-            <AvatarImage src={verifiedUser.profile.avatar_url || ""} alt={verifiedUser.profile.full_name} />
-            <AvatarFallback>{getInitials(verifiedUser.profile.full_name)}</AvatarFallback>
+        <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={profile?.avatar_url || ""} alt={profile?.full_name || "User"} />
+            <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56" align="end" forceMount>
-        <DropdownMenuLabel>
+        <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium">{verifiedUser.profile.full_name}</p>
-            <p className="text-xs text-muted-foreground">{verifiedUser.profile.email}</p>
-            <p className="text-xs font-medium text-primary">{getRoleLabel(verifiedUser.profile.role)}</p>
+            <p className="text-sm font-medium leading-none">{profile?.full_name || "User"}</p>
+            <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuItem asChild>
-            <a href={`/dashboard/${userRole}/profile`} className="cursor-pointer">
+            <Link href="/dashboard/profile">
               <User className="mr-2 h-4 w-4" />
               <span>Profile</span>
-            </a>
+            </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
-            <a href={`/dashboard/${userRole}/settings`} className="cursor-pointer">
+            <Link href={`/dashboard/${profile?.role || ""}/settings`}>
               <Settings className="mr-2 h-4 w-4" />
               <span>Settings</span>
-            </a>
+            </Link>
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer">
-          <LogOut className="mr-2 h-4 w-4" />
+        <DropdownMenuItem onClick={handleSignOut} disabled={isSigningOut}>
+          {isSigningOut ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogOut className="mr-2 h-4 w-4" />}
           <span>Log out</span>
         </DropdownMenuItem>
       </DropdownMenuContent>

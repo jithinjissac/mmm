@@ -1,7 +1,6 @@
 "use client"
 
-import type React from "react"
-
+import { useAuth } from "@/lib/auth/auth-context"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -9,193 +8,102 @@ import {
   Home,
   Building,
   Users,
-  Settings,
   MessageSquare,
-  Wrench,
   CreditCard,
-  FileText,
+  Wrench,
+  Settings,
   User,
-  BarChart,
+  Flag,
+  FileText,
+  Calendar,
+  Clock,
 } from "lucide-react"
 
-type NavItem = {
-  title: string
-  href: string
-  icon: React.ComponentType<{ className?: string }>
-}
-
-const adminNavItems: NavItem[] = [
-  {
-    title: "Dashboard",
-    href: "/dashboard/admin",
-    icon: Home,
-  },
-  {
-    title: "Users",
-    href: "/dashboard/admin/users",
-    icon: Users,
-  },
-  {
-    title: "Properties",
-    href: "/dashboard/admin/properties",
-    icon: Building,
-  },
-  {
-    title: "Reports",
-    href: "/dashboard/admin/reports",
-    icon: BarChart,
-  },
-  {
-    title: "Settings",
-    href: "/dashboard/admin/settings",
-    icon: Settings,
-  },
-]
-
-const landlordNavItems: NavItem[] = [
-  {
-    title: "Dashboard",
-    href: "/dashboard/landlord",
-    icon: Home,
-  },
-  {
-    title: "Properties",
-    href: "/dashboard/landlord/properties",
-    icon: Building,
-  },
-  {
-    title: "Rooms",
-    href: "/dashboard/landlord/rooms",
-    icon: FileText,
-  },
-  {
-    title: "Tenants",
-    href: "/dashboard/landlord/tenants",
-    icon: Users,
-  },
-  {
-    title: "Maintenance",
-    href: "/dashboard/landlord/maintenance",
-    icon: Wrench,
-  },
-  {
-    title: "Payments",
-    href: "/dashboard/landlord/payments",
-    icon: CreditCard,
-  },
-  {
-    title: "Messages",
-    href: "/dashboard/landlord/messages",
-    icon: MessageSquare,
-  },
-  {
-    title: "Profile",
-    href: "/dashboard/landlord/profile",
-    icon: User,
-  },
-]
-
-const tenantNavItems: NavItem[] = [
-  {
-    title: "Dashboard",
-    href: "/dashboard/tenant",
-    icon: Home,
-  },
-  {
-    title: "My Rental",
-    href: "/dashboard/tenant/rental",
-    icon: Building,
-  },
-  {
-    title: "Maintenance Requests",
-    href: "/dashboard/tenant/maintenance",
-    icon: Wrench,
-  },
-  {
-    title: "Payments",
-    href: "/dashboard/tenant/payments",
-    icon: CreditCard,
-  },
-  {
-    title: "Messages",
-    href: "/dashboard/tenant/messages",
-    icon: MessageSquare,
-  },
-  {
-    title: "Profile",
-    href: "/dashboard/tenant/profile",
-    icon: User,
-  },
-]
-
-const maintenanceNavItems: NavItem[] = [
-  {
-    title: "Dashboard",
-    href: "/dashboard/maintenance",
-    icon: Home,
-  },
-  {
-    title: "Work Orders",
-    href: "/dashboard/maintenance/work-orders",
-    icon: Wrench,
-  },
-  {
-    title: "Properties",
-    href: "/dashboard/maintenance/properties",
-    icon: Building,
-  },
-  {
-    title: "Messages",
-    href: "/dashboard/maintenance/messages",
-    icon: MessageSquare,
-  },
-  {
-    title: "Profile",
-    href: "/dashboard/maintenance/profile",
-    icon: User,
-  },
-]
-
-export function DashboardNav({ userRole }: { userRole: string | undefined }) {
+export function DashboardNav() {
+  const { profile, isLoading } = useAuth()
   const pathname = usePathname()
 
-  // Default to tenant if role is undefined
-  const safeRole = userRole || "tenant"
-
-  let navItems: NavItem[] = []
-
-  switch (safeRole) {
-    case "admin":
-      navItems = adminNavItems
-      break
-    case "landlord":
-      navItems = landlordNavItems
-      break
-    case "tenant":
-      navItems = tenantNavItems
-      break
-    case "maintenance":
-      navItems = maintenanceNavItems
-      break
-    default:
-      navItems = tenantNavItems
+  if (isLoading) {
+    return (
+      <nav className="grid items-start gap-2 p-4">
+        <div className="h-8 w-full animate-pulse rounded bg-muted"></div>
+        <div className="h-8 w-full animate-pulse rounded bg-muted"></div>
+        <div className="h-8 w-full animate-pulse rounded bg-muted"></div>
+      </nav>
+    )
   }
 
+  // Define navigation items based on user role
+  const navItems = (() => {
+    switch (profile?.role) {
+      case "admin":
+        return [
+          { href: "/dashboard/admin", label: "Dashboard", icon: Home },
+          { href: "/dashboard/admin/users", label: "Users", icon: Users },
+          { href: "/dashboard/admin/properties", label: "Properties", icon: Building },
+          { href: "/dashboard/admin/reviews", label: "Reviews", icon: FileText },
+          { href: "/dashboard/admin/flag-content", label: "Flagged Content", icon: Flag },
+          { href: "/dashboard/admin/disputes", label: "Disputes", icon: MessageSquare },
+          { href: "/dashboard/admin/settings", label: "Settings", icon: Settings },
+        ]
+      case "landlord":
+        return [
+          { href: "/dashboard/landlord", label: "Dashboard", icon: Home },
+          { href: "/dashboard/landlord/properties", label: "Properties", icon: Building },
+          { href: "/dashboard/landlord/rooms", label: "Rooms", icon: Building },
+          { href: "/dashboard/landlord/tenants", label: "Tenants", icon: Users },
+          { href: "/dashboard/landlord/messages", label: "Messages", icon: MessageSquare },
+          { href: "/dashboard/landlord/payments", label: "Payments", icon: CreditCard },
+          { href: "/dashboard/landlord/maintenance", label: "Maintenance", icon: Wrench },
+          { href: "/dashboard/landlord/profile", label: "Profile", icon: User },
+          { href: "/dashboard/landlord/settings", label: "Settings", icon: Settings },
+        ]
+      case "tenant":
+        return [
+          { href: "/dashboard/tenant", label: "Dashboard", icon: Home },
+          { href: "/dashboard/tenant/rental", label: "My Rental", icon: Building },
+          { href: "/dashboard/tenant/messages", label: "Messages", icon: MessageSquare },
+          { href: "/dashboard/tenant/payments", label: "Payments", icon: CreditCard },
+          { href: "/dashboard/tenant/maintenance", label: "Maintenance", icon: Wrench },
+          { href: "/dashboard/tenant/bills", label: "Bills", icon: FileText },
+          { href: "/dashboard/tenant/chores", label: "Chores", icon: Calendar },
+          { href: "/dashboard/tenant/groups", label: "Groups", icon: Users },
+          { href: "/dashboard/tenant/profile", label: "Profile", icon: User },
+          { href: "/dashboard/tenant/settings", label: "Settings", icon: Settings },
+        ]
+      case "maintenance":
+        return [
+          { href: "/dashboard/maintenance/dashboard", label: "Dashboard", icon: Home },
+          { href: "/dashboard/maintenance/work-orders", label: "Work Orders", icon: FileText },
+          { href: "/dashboard/maintenance/properties", label: "Properties", icon: Building },
+          { href: "/dashboard/maintenance/schedule", label: "Schedule", icon: Clock },
+        ]
+      default:
+        return [
+          { href: "/dashboard", label: "Dashboard", icon: Home },
+          { href: "/dashboard/profile", label: "Profile", icon: User },
+        ]
+    }
+  })()
+
   return (
-    <nav className="grid items-start gap-2 p-4 md:px-2 lg:px-4">
-      {navItems.map((item) => (
-        <Link
-          key={item.href}
-          href={item.href}
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground",
-            pathname === item.href ? "bg-accent text-accent-foreground" : "transparent",
-          )}
-        >
-          <item.icon className="h-5 w-5" />
-          {item.title}
-        </Link>
-      ))}
+    <nav className="grid items-start gap-2 p-4">
+      {navItems.map((item, index) => {
+        const Icon = item.icon
+        return (
+          <Link
+            key={index}
+            href={item.href}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all hover:bg-accent",
+              pathname === item.href ? "bg-accent text-accent-foreground" : "text-muted-foreground",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {item.label}
+          </Link>
+        )
+      })}
     </nav>
   )
 }

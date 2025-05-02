@@ -1,33 +1,26 @@
 import type React from "react"
-import type { Metadata } from "next"
+import "@/app/globals.css"
 import { Inter } from "next/font/google"
-import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { AuthProvider } from "@/components/auth-provider"
 import { Toaster } from "@/components/ui/toaster"
+import ClientLayout from "./client-layout"
 
 const inter = Inter({ subsets: ["latin"] })
 
-export const metadata: Metadata = {
+export const metadata = {
   title: "UK Rental Solution",
-  description: "A comprehensive rental management platform for the UK market",
+  description: "A comprehensive rental management solution for the UK market",
     generator: 'v0.dev'
 }
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body className={inter.className}>
-        <AuthProvider>
-          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-            {children}
-            <Toaster />
-          </ThemeProvider>
-        </AuthProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <ClientLayout>{children}</ClientLayout>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   )

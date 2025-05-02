@@ -1,55 +1,91 @@
 import { Suspense } from "react"
 import Link from "next/link"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
-import { Building, Plus } from "lucide-react"
-import { getProperties } from "./actions"
+import { Plus } from "lucide-react"
 import { PropertyListSkeleton } from "@/components/skeletons/property-list-skeleton"
-import { PropertyCard } from "@/components/property-card"
+import { PropertyCard } from "@/components/properties/property-card"
 
-export default function PropertiesPage() {
+async function getProperties() {
+  const supabase = createServerSupabaseClient()
+
+  // Get the current user session
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  if (!session) {
+    return []
+  }
+
+  const userId = session.user.id
+
+  try {
+    const { data: properties, error } = await supabase
+      .from("properties")
+      .select(`
+        *,
+        property_images(*)
+      `)
+      .eq("landlord_id", userId)
+      .order("created_at", { ascending: false })
+
+    if (error) throw error
+    return properties || []
+  } catch (error) {
+    console.error("Error fetching properties:", error)
+    return []
+  }
+}
+
+async function PropertiesContent() {
+  const properties = await getProperties()
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Properties</h1>
-        <Link href="/dashboard/landlord/properties/add">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" /> Add Property
+    <>
+      {properties.length === 0 ? (
+        <div className="text-center py-12">
+          <h3 className="text-lg font-medium mb-2">No properties found</h3>
+          <p className="text-muted-foreground mb-6">
+            You haven't added any properties yet. Get started by adding your first property.
+          </p>
+          <Button asChild>
+            <Link href="/dashboard/landlord/properties/add">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Property
+            </Link>
           </Button>
-        </Link>
-      </div>
-
-      <Suspense fallback={<PropertyListSkeleton />}>
-        <PropertyList />
-      </Suspense>
-    </div>
+        </div>
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {properties.map((property) => (
+            <PropertyCard key={property.id} property={property} />
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 
-async function PropertyList() {
-  const properties = await getProperties()
-
-  if (properties.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-        <Building className="h-10 w-10 text-muted-foreground" />
-        <h3 className="mt-4 text-lg font-semibold">No properties yet</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Add your first property to start managing your rental business.
-        </p>
-        <Link href="/dashboard/landlord/properties/add" className="mt-4">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" /> Add Property
-          </Button>
-        </Link>
-      </div>
-    )
-  }
-
+export default function PropertiesPage() {
   return (
-    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      {properties.map((property) => (
-        <PropertyCard key={property.id} property={property} />
-      ))}
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Properties</h1>
+          <p className="text-muted-foreground">Manage your rental properties and rooms.</p>
+        </div>
+        <Button asChild>
+          <Link href="/dashboard/landlord/properties/add">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Property
+          </Link>
+        </Button>
+      </div>
+
+      <Suspense fallback={<PropertyListSkeleton />}>
+        <PropertiesContent />
+      </Suspense>
     </div>
   )
 }

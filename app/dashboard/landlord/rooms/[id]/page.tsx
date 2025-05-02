@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
-import { ArrowLeft, Edit, Trash2, Building, CreditCard } from "lucide-react"
+import { ArrowLeft, Edit, Trash2, Building, CreditCard, Loader2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -17,52 +17,65 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { getRoom, deleteRoom } from "../actions"
+import { getRoomById, deleteRoom } from "@/lib/local-storage/storage-service"
 import { TenantManagement } from "@/components/tenant-management"
-import type { Database } from "@/lib/database.types"
-
-type Room = Database["public"]["Tables"]["rooms"]["Row"] & {
-  room_images: Database["public"]["Tables"]["room_images"]["Row"][]
-  properties: Database["public"]["Tables"]["properties"]["Row"]
-}
+import { useAuth } from "@/components/mock-auth-provider"
+import type { LocalRoom } from "@/lib/local-storage/storage-service"
 
 export default function RoomDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { toast } = useToast()
-  const roomId = params.id as string
+  const { user } = useAuth()
 
-  const [room, setRoom] = useState<Room | null>(null)
+  const [room, setRoom] = useState<LocalRoom | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
   const [selectedImage, setSelectedImage] = useState(0)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadRoom() {
       try {
-        const roomData = await getRoom(roomId)
+        if (!params.id || typeof params.id !== "string") {
+          setError("Invalid room ID")
+          setIsLoading(false)
+          return
+        }
+
+        const roomData = await getRoomById(params.id)
+
+        if (!roomData) {
+          setError("Room not found")
+          setIsLoading(false)
+          return
+        }
+
+        // Check if user is the landlord of this room
+        if (user && roomData.properties && roomData.properties.landlord_id !== user.id) {
+          setError("You don't have permission to view this room")
+          setIsLoading(false)
+          return
+        }
+
         setRoom(roomData)
-      } catch (error) {
-        console.error("Error loading room:", error)
-        toast({
-          title: "Error loading room",
-          description: "Could not load the room details. Please try again.",
-          variant: "destructive",
-        })
-      } finally {
+        setIsLoading(false)
+      } catch (err) {
+        console.error("Error loading room:", err)
+        setError("Failed to load room details")
         setIsLoading(false)
       }
     }
 
     loadRoom()
-  }, [roomId, toast])
+  }, [params.id, user])
 
   const handleDeleteRoom = async () => {
     if (!room) return
 
     setIsDeleting(true)
     try {
-      await deleteRoom(roomId)
+      await deleteRoom(params.id as string)
       toast({
         title: "Room deleted",
         description: "The room has been deleted successfully.",
@@ -92,13 +105,14 @@ export default function RoomDetailPage() {
           <h1 className="text-3xl font-bold tracking-tight">Room Details</h1>
         </div>
         <div className="flex justify-center p-8">
-          <p>Loading room details...</p>
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <span className="ml-2">Loading room details...</span>
         </div>
       </div>
     )
   }
 
-  if (!room) {
+  if (error || !room) {
     return (
       <div className="flex flex-col gap-6">
         <div className="flex items-center gap-2">
@@ -111,7 +125,7 @@ export default function RoomDetailPage() {
         </div>
         <Card>
           <CardContent className="p-6">
-            <p>The room you are looking for does not exist or you don't have permission to view it.</p>
+            <p>{error || "The room you are looking for does not exist or you don't have permission to view it."}</p>
             <Link href="/dashboard/landlord/rooms">
               <Button className="mt-4">Back to Rooms</Button>
             </Link>
@@ -136,7 +150,7 @@ export default function RoomDetailPage() {
           </Badge>
         </div>
         <div className="flex gap-2">
-          <Link href={`/dashboard/landlord/rooms/${roomId}/edit`}>
+          <Link href={`/dashboard/landlord/rooms/${params.id}/edit`}>
             <Button variant="outline">
               <Edit className="mr-2 h-4 w-4" /> Edit Room
             </Button>
@@ -306,12 +320,12 @@ export default function RoomDetailPage() {
               <CardTitle>Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Link href={`/dashboard/landlord/rooms/${roomId}/edit`}>
+              <Link href={`/dashboard/landlord/rooms/${params.id}/edit`}>
                 <Button className="w-full justify-start" variant="outline">
                   <Edit className="mr-2 h-4 w-4" /> Edit Room Details
                 </Button>
               </Link>
-              <Link href={`/dashboard/landlord/rooms/${roomId}/payments`}>
+              <Link href={`/dashboard/landlord/rooms/${params.id}/payments`}>
                 <Button className="w-full justify-start" variant="outline">
                   <CreditCard className="mr-2 h-4 w-4" /> Record Payment
                 </Button>

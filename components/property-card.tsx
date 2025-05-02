@@ -1,101 +1,78 @@
 import Link from "next/link"
-import { Card, CardContent } from "@/components/ui/card"
+import Image from "next/image"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Building, MapPin, Home, Bed } from "lucide-react"
-import type { Database } from "@/lib/database.types"
-
-type Property = Database["public"]["Tables"]["properties"]["Row"] & {
-  property_images?: Database["public"]["Tables"]["property_images"]["Row"][]
-  rooms?: Database["public"]["Tables"]["rooms"]["Row"][]
-}
+import { Bed, Bath, Home, MapPin } from "lucide-react"
+import { UserRating } from "@/components/reviews/user-rating"
 
 interface PropertyCardProps {
-  property: Property
+  property: any
 }
 
 export function PropertyCard({ property }: PropertyCardProps) {
-  // Calculate occupancy
-  const totalRooms = property.rooms?.length || 0
-  const occupiedRooms = property.rooms?.filter((room) => room.status === "occupied").length || 0
+  const { id, name, address, city, property_type, bedrooms, bathrooms, monthly_rent, is_available, images } = property
 
-  // Calculate monthly income
-  const monthlyIncome =
-    property.rooms?.reduce((total, room) => {
-      return room.status === "occupied" ? total + (Number.parseFloat(room.rent.toString()) || 0) : total
-    }, 0) || 0
+  // Get the first image or use a placeholder
+  const imageUrl = images && images.length > 0 ? images[0] : `/placeholder.svg?height=300&width=500&query=property`
 
   return (
-    <Link href={`/dashboard/landlord/properties/${property.id}`}>
-      <Card className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer h-full flex flex-col">
-        <div className="h-48 w-full overflow-hidden">
-          {property.property_images && property.property_images.length > 0 ? (
-            <img
-              src={
-                property.property_images.find((img) => img.is_primary)?.url ||
-                property.property_images[0].url ||
-                "/placeholder.svg?height=400&width=600&query=property" ||
-                "/placeholder.svg"
-              }
-              alt={property.name}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-muted">
-              <Building className="h-12 w-12 text-muted-foreground" />
+    <Link href={`/dashboard/landlord/properties/${id}`}>
+      <Card className="overflow-hidden transition-all hover:shadow-md">
+        <div className="aspect-video relative overflow-hidden">
+          <Image
+            src={imageUrl || "/placeholder.svg"}
+            alt={name}
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            priority={false}
+            placeholder="blur"
+            blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+          />
+          {!is_available && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+              <Badge variant="destructive" className="text-lg font-semibold px-3 py-1.5">
+                Rented
+              </Badge>
             </div>
           )}
         </div>
-        <CardContent className="p-4 flex-1 flex flex-col">
-          <h3 className="text-xl font-bold">{property.name}</h3>
-          <p className="flex items-center gap-1 text-sm text-muted-foreground">
-            <MapPin className="h-3.5 w-3.5" />
-            {property.address}, {property.city}, {property.postcode}
-          </p>
-          <div className="grid grid-cols-2 gap-2 my-4">
-            <div className="flex items-center gap-2">
-              <Building className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">
-                {property.property_type.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())}
-              </span>
+        <CardHeader className="p-4 pb-2">
+          <div className="flex justify-between items-start">
+            <CardTitle className="text-xl">{name}</CardTitle>
+            {is_available && (
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                Available
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 pb-2">
+          <div className="flex items-center text-muted-foreground mb-2">
+            <MapPin className="h-4 w-4 mr-1" />
+            <span className="text-sm truncate">{address}</span>
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            <div className="flex items-center">
+              <Home className="h-4 w-4 mr-1" />
+              <span className="capitalize">{property_type}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Home className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">{totalRooms} Rooms</span>
+            <div className="flex items-center">
+              <Bed className="h-4 w-4 mr-1" />
+              <span>{bedrooms}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Bed className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">
-                {occupiedRooms}/{totalRooms} Occupied
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Bed className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">£{monthlyIncome}/month</span>
+            <div className="flex items-center">
+              <Bath className="h-4 w-4 mr-1" />
+              <span>{bathrooms}</span>
             </div>
           </div>
-
-          {property.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{property.description}</p>
-          )}
-
-          {property.amenities && property.amenities.length > 0 && (
-            <div className="mt-auto">
-              <h4 className="text-sm font-medium mb-2">Amenities</h4>
-              <div className="flex flex-wrap gap-2">
-                {property.amenities.slice(0, 4).map((amenity, index) => (
-                  <Badge key={index} variant="outline" className="text-xs">
-                    {amenity}
-                  </Badge>
-                ))}
-                {property.amenities.length > 4 && (
-                  <Badge variant="outline" className="text-xs">
-                    +{property.amenities.length - 4} more
-                  </Badge>
-                )}
-              </div>
-            </div>
-          )}
+          <div className="mt-2">
+            <UserRating userId={property.landlord_id} size="sm" />
+          </div>
         </CardContent>
+        <CardFooter className="p-4 pt-2 border-t">
+          <div className="text-lg font-bold">£{monthly_rent}/month</div>
+        </CardFooter>
       </Card>
     </Link>
   )

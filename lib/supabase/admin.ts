@@ -1,163 +1,173 @@
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/database.types"
 
-// This client has admin privileges and should only be used in server contexts
-const supabaseAdmin = createClient<Database>(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-})
+// Use a singleton pattern to prevent multiple instances
+let adminClient: ReturnType<typeof createClient<Database>> | null = null
 
-// Simple in-memory cache to prevent excessive API calls
-const userCache = new Map<string, { user: any; timestamp: number }>()
-const CACHE_TTL = 60000 // 1 minute
+/**
+ * Creates a Supabase admin client with the service role key
+ */
+export function createAdminSupabaseClient() {
+  // Return existing client if available
+  if (adminClient) {
+    return adminClient
+  }
 
+  // Get environment variables
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  // Validate environment variables
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error("Supabase URL or Service Role Key is missing")
+    throw new Error("Supabase admin configuration is incomplete")
+  }
+
+  try {
+    // Create the admin client
+    adminClient = createClient<Database>(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+      global: {
+        headers: {
+          apikey: supabaseServiceKey,
+        },
+      },
+    })
+
+    return adminClient
+  } catch (error) {
+    console.error("Error creating admin Supabase client:", error)
+    throw new Error("Failed to initialize admin Supabase client")
+  }
+}
+
+/**
+ * Reset the admin client (useful for testing)
+ */
+export function resetAdminSupabaseClient() {
+  adminClient = null
+}
+
+/**
+ * Syncs a user to their profile in the database
+ */
 export async function syncUserToProfile(userId: string) {
   try {
-    // Check if profile already exists first to avoid duplicate key errors
-    const { data: existingProfile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single()
+    console.log(`Admin: Syncing profile for user ${userId}`)
 
-    if (!profileError && existingProfile) {
-      console.log("Profile already exists, skipping creation")
+    // Get the admin client
+    const supabase = createAdminSupabaseClient()
 
-      // Check if the role is valid
-      if (!existingProfile.role || existingProfile.role === "undefined") {
-        console.log("Existing profile has invalid role, updating to default role 'tenant'")
+    // Get the user's data
+    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId)
 
-        // Update the profile with a default role
-        const { data: updatedProfile, error: updateError } = await supabaseAdmin
-          .from("profiles")
-          .update({ role: "tenant" })
-          .eq("id", userId)
-          .select()
-          .single()
-
-        if (!updateError && updatedProfile) {
-          return { success: true, profile: updatedProfile }
-        }
-      }
-
-      return { success: true, profile: existingProfile }
+    if (userError) {
+      console.error(`Admin: Error getting user ${userId}:`, userError)
+      return { success: false, error: userError }
     }
 
-    // Get user data with caching to avoid rate limiting
-    let userData
-    const cachedUser = userCache.get(userId)
-
-    if (cachedUser && Date.now() - cachedUser.timestamp < CACHE_TTL) {
-      console.log("Using cached user data")
-      userData = cachedUser.user
-    } else {
-      // Use the admin API to get user data instead of querying auth.users directly
-      try {
-        const { data: user, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId)
-
-        if (userError) {
-          console.error("Error fetching user with admin API:", userError)
-          return { success: false, error: userError }
-        }
-
-        userData = user.user
-      } catch (adminError) {
-        console.error("Error in admin getUserById:", adminError)
-        return { success: false, error: adminError }
-      }
-
-      // Cache the user data
-      userCache.set(userId, { user: userData, timestamp: Date.now() })
-    }
-
-    if (!userData) {
-      console.error("Could not retrieve user data")
+    if (!userData || !userData.user) {
+      console.error(`Admin: User ${userId} not found`)
       return { success: false, error: new Error("User not found") }
     }
 
-    // Extract metadata
-    const metadata = userData.user_metadata || {}
-    const email = userData.email || "unknown@example.com"
-    const fullName = metadata?.full_name || metadata?.name || "New User"
+    // Extract user metadata
+    const metadata = userData.user.user_metadata || {}
+    const email = userData.user.email || "unknown@example.com"
+    const fullName = metadata.full_name || metadata.name || "New User"
+    const role = (metadata.role || "tenant").toLowerCase()
 
-    // Ensure we have a valid role, defaulting to "tenant" if not present or invalid
-    let role = (metadata?.role || "tenant").toLowerCase()
-    if (!["admin", "landlord", "tenant", "maintenance"].includes(role)) {
-      console.warn(`Invalid role "${role}" detected, defaulting to "tenant"`)
-      role = "tenant"
+    // Check if profile already exists
+    const { data: existingProfile, error: profileError } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle()
+
+    // Handle database errors (except "not found")
+    if (profileError && profileError.code !== "PGRST116") {
+      console.error(`Admin: Error checking for existing profile:`, profileError)
+      return { success: false, error: profileError }
     }
 
-    console.log("Creating profile with data:", { email, fullName, role })
+    const now = new Date().toISOString()
 
-    // Create new profile with error handling for duplicate key
-    try {
-      const { data: profile, error: insertError } = await supabaseAdmin
+    // Update or create profile
+    if (existingProfile) {
+      // Update existing profile
+      const { data, error: updateError } = await supabase
+        .from("profiles")
+        .update({
+          email,
+          full_name: fullName,
+          role,
+          updated_at: now,
+        })
+        .eq("id", userId)
+        .select()
+        .single()
+
+      if (updateError) {
+        console.error(`Admin: Error updating profile:`, updateError)
+        return { success: false, error: updateError }
+      }
+
+      console.log(`Admin: Updated profile for user ${userId}`)
+      return { success: true, profile: data }
+    } else {
+      // Create new profile
+      const { data, error: insertError } = await supabase
         .from("profiles")
         .insert({
           id: userId,
           email,
           full_name: fullName,
           role,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          created_at: now,
+          updated_at: now,
         })
         .select()
         .single()
 
       if (insertError) {
-        // If it's a duplicate key error, try to get the existing profile
+        // Check for duplicate key violation
         if (insertError.code === "23505") {
-          // PostgreSQL unique violation code
-          console.log("Profile already exists (duplicate key), fetching existing profile")
-          const { data: existingProfile } = await supabaseAdmin.from("profiles").select("*").eq("id", userId).single()
+          console.warn(`Admin: Profile already exists for user ${userId}, retrying as update`)
 
-          if (existingProfile) {
-            // Check if the role is valid
-            if (!existingProfile.role || existingProfile.role === "undefined") {
-              console.log("Existing profile has invalid role, updating to default role 'tenant'")
+          // Try updating instead
+          const { data: retryData, error: retryError } = await supabase
+            .from("profiles")
+            .update({
+              email,
+              full_name: fullName,
+              role,
+              updated_at: now,
+            })
+            .eq("id", userId)
+            .select()
+            .single()
 
-              // Update the profile with a default role
-              const { data: updatedProfile } = await supabaseAdmin
-                .from("profiles")
-                .update({ role: "tenant" })
-                .eq("id", userId)
-                .select()
-                .single()
-
-              if (updatedProfile) {
-                return { success: true, profile: updatedProfile }
-              }
-            }
+          if (retryError) {
+            console.error(`Admin: Error in retry update:`, retryError)
+            return { success: false, error: retryError }
           }
 
-          return { success: true, profile: existingProfile }
+          console.log(`Admin: Updated profile on retry for user ${userId}`)
+          return { success: true, profile: retryData }
         }
 
-        console.error("Error creating profile:", insertError)
+        console.error(`Admin: Error creating profile:`, insertError)
         return { success: false, error: insertError }
       }
 
-      return { success: true, profile }
-    } catch (error) {
-      console.error("Unexpected error in profile creation:", error)
-
-      // One last attempt to get the profile if it might exist
-      try {
-        const { data: existingProfile } = await supabaseAdmin.from("profiles").select("*").eq("id", userId).single()
-
-        if (existingProfile) {
-          return { success: true, profile: existingProfile }
-        }
-      } catch (finalError) {
-        console.error("Final attempt to get profile failed:", finalError)
-      }
-
-      return { success: false, error }
+      console.log(`Admin: Created profile for user ${userId}`)
+      return { success: true, profile: data }
     }
   } catch (error) {
-    console.error("Unexpected error in syncUserToProfile:", error)
+    console.error("Admin: Unexpected error in syncUserToProfile:", error)
     return { success: false, error }
   }
 }

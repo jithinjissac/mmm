@@ -169,6 +169,47 @@ export type Database = {
           created_at?: string
         }
       }
+      verifications: {
+        Row: {
+          id: string
+          user_id: string
+          status: "unverified" | "pending" | "verified" | "rejected"
+          id_front_url: string | null
+          id_back_url: string | null
+          selfie_url: string | null
+          rejection_reason: string | null
+          submitted_at: string | null
+          verified_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          status: "unverified" | "pending" | "verified" | "rejected"
+          id_front_url?: string | null
+          id_back_url?: string | null
+          selfie_url?: string | null
+          rejection_reason?: string | null
+          submitted_at?: string | null
+          verified_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          status?: "unverified" | "pending" | "verified" | "rejected"
+          id_front_url?: string | null
+          id_back_url?: string | null
+          selfie_url?: string | null
+          rejection_reason?: string | null
+          submitted_at?: string | null
+          verified_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -181,6 +222,7 @@ export type Database = {
       property_type: "apartment" | "apartment_building" | "house" | "studio" | "shared_house"
       room_type: "single" | "double" | "ensuite" | "studio"
       room_status: "vacant" | "occupied" | "maintenance" | "reserved"
+      verification_status: "unverified" | "pending" | "verified" | "rejected"
     }
   }
 }

@@ -1,368 +1,161 @@
 "use client"
 
-import type React from "react"
-
-import { createContext, useContext, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import { createClientSupabaseClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
 import type { Database } from "@/lib/database.types"
+import type { UserRole } from "@/lib/services/role-management"
+
+import type React from "react"
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
+import { useRouter, usePathname } from "next/navigation"
+import { useToast } from "@/components/ui/use-toast"
+import { RoleManagementService } from "@/lib/services/role-management"
+import { initializeSampleData } from "@/lib/local-storage/init-sample-data"
+import {
+  signIn as localSignIn,
+  signOut as localSignOut,
+  getSession,
+  getProfileById,
+} from "@/lib/local-storage/auth-service"
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"]
-type UserWithProfile = User & { profile: Profile | null }
 
 type AuthContextType = {
-  user: UserWithProfile | null
+  user: User | null
+  userProfile: Profile | null
+  userRole: UserRole | null
   isLoading: boolean
-  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: any }>
-  signUp: (email: string, password: string, userData: any) => Promise<void>
+  signIn: (
+    email: string,
+    password: string,
+  ) => Promise<{
+    success: boolean
+    error: Error | null
+    role: UserRole | null
+  }>
   signOut: () => Promise<void>
-  refreshProfile: () => Promise<void>
+  refreshSession: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Simple in-memory cache to prevent excessive API calls
-const profileCache = new Map<string, { profile: Profile | null; timestamp: number }>()
-const CACHE_TTL = 60000 // 1 minute
-
-// Track profile creation attempts to prevent duplicates
-const profileCreationAttempts = new Map<string, boolean>()
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserWithProfile | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+  const [userProfile, setUserProfile] = useState<Profile | null>(null)
+  const [userRole, setUserRole] = useState<UserRole | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isInitialized, setIsInitialized] = useState(false)
   const router = useRouter()
-  const supabase = createClientSupabaseClient()
+  const pathname = usePathname()
+  const { toast } = useToast()
 
-  // Fetch authenticated user data and profile
-  const fetchAuthenticatedUser = async (): Promise<UserWithProfile | null> => {
-    try {
-      // Always use getUser() to get authenticated user data
-      const { data: userData, error: userError } = await supabase.auth.getUser()
+  // Add refs to track redirect state and prevent loops
+  const isRedirecting = useRef(false)
+  const lastRedirectTime = useRef(0)
+  const redirectCount = useRef(0)
 
-      if (userError) {
-        console.error("Error fetching authenticated user:", userError)
-        return null
-      }
-
-      if (!userData.user) {
-        return null
-      }
-
-      // Get or create the user profile
-      const profile = await ensureUserProfile(userData.user.id)
-      return { ...userData.user, profile }
-    } catch (error) {
-      console.error("Unexpected error in fetchAuthenticatedUser:", error)
-      return null
-    }
-  }
-
-  const refreshProfile = async () => {
-    try {
-      const authenticatedUser = await fetchAuthenticatedUser()
-
-      if (!authenticatedUser) {
-        console.log("No authenticated user found during profile refresh")
-        return
-      }
-
-      setUser(authenticatedUser)
-    } catch (err) {
-      console.error("Error in refreshProfile:", err)
-    }
-  }
-
-  const ensureUserProfile = async (userId: string): Promise<Profile | null> => {
-    try {
-      console.log("Ensuring user profile for:", userId)
-
-      // Check cache first
-      const cachedProfile = profileCache.get(userId)
-      if (cachedProfile && Date.now() - cachedProfile.timestamp < CACHE_TTL) {
-        console.log("Using cached profile")
-
-        // Ensure the cached profile has a valid role
-        if (cachedProfile.profile && (!cachedProfile.profile.role || cachedProfile.profile.role === "undefined")) {
-          console.warn("Cached profile has invalid role, setting default role 'tenant'")
-          cachedProfile.profile.role = "tenant"
-        }
-
-        return cachedProfile.profile
-      }
-
-      // First try to get the profile directly from the database
-      const { data: profile, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
-
-      if (!error && profile) {
-        console.log("Profile found in database:", profile.id)
-
-        // Before returning the profile, ensure it has a valid role
-        if (!profile.role || profile.role === "undefined") {
-          console.warn("Profile has invalid role, updating to default role 'tenant'")
-
-          try {
-            const { data: updatedProfile } = await supabase
-              .from("profiles")
-              .update({ role: "tenant" })
-              .eq("id", userId)
-              .select()
-              .single()
-
-            if (updatedProfile) {
-              // Update cache
-              profileCache.set(userId, { profile: updatedProfile, timestamp: Date.now() })
-              return updatedProfile
-            }
-          } catch (updateErr) {
-            console.error("Error updating profile with default role:", updateErr)
-          }
-
-          // If update fails, at least return a profile with a valid role
-          profile.role = "tenant"
-        }
-
-        // Update cache
-        profileCache.set(userId, { profile, timestamp: Date.now() })
-        return profile
-      }
-
-      // If we reach here, the profile doesn't exist in the database
-      console.log("Profile not found in database, checking if creation is already in progress")
-
-      // Check if we're already attempting to create this profile
-      if (profileCreationAttempts.get(userId)) {
-        console.log("Profile creation already in progress for", userId)
-        // Wait a bit and try to get the profile again
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        const { data: retryProfile } = await supabase.from("profiles").select("*").eq("id", userId).single()
-
-        if (retryProfile) {
-          profileCache.set(userId, { profile: retryProfile, timestamp: Date.now() })
-          return retryProfile
-        }
-
-        return null
-      }
-
-      console.log("Profile not found, attempting to create via API")
-      profileCreationAttempts.set(userId, true)
-
+  // Initialize local storage with sample data
+  useEffect(() => {
+    const initialize = async () => {
       try {
-        // If profile doesn't exist, call our API endpoint to create it
-        const response = await fetch("/api/auth/sync-profile", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ userId }),
-        })
-
-        if (response.ok) {
-          const result = await response.json()
-
-          if (result.success && result.profile) {
-            console.log("Profile created successfully via API:", result.profile.id)
-            // Update cache
-            profileCache.set(userId, { profile: result.profile, timestamp: Date.now() })
-            profileCreationAttempts.delete(userId)
-            return result.profile
-          }
-        } else {
-          console.error("API call failed with status:", response.status)
-          // If API call fails, try to create the profile directly
-          try {
-            // Get user metadata from auth
-            const { data: userData } = await supabase.auth.getUser()
-            if (userData && userData.user) {
-              const metadata = userData.user.user_metadata || {}
-              const email = userData.user.email || "unknown@example.com"
-              const fullName = metadata?.full_name || metadata?.name || "New User"
-              let role = (metadata?.role || "tenant").toLowerCase()
-
-              if (!["admin", "landlord", "tenant", "maintenance"].includes(role)) {
-                role = "tenant"
-              }
-
-              // Create profile directly
-              const { data: newProfile, error: insertError } = await supabase
-                .from("profiles")
-                .insert({
-                  id: userId,
-                  email,
-                  full_name: fullName,
-                  role,
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                })
-                .select()
-                .single()
-
-              if (!insertError && newProfile) {
-                profileCache.set(userId, { profile: newProfile, timestamp: Date.now() })
-                profileCreationAttempts.delete(userId)
-                return newProfile
-              }
-            }
-          } catch (directCreateError) {
-            console.error("Error creating profile directly:", directCreateError)
-          }
-        }
-
-        // If API call fails, try to get the profile directly again
-        const { data: newProfile } = await supabase.from("profiles").select("*").eq("id", userId).single()
-
-        if (newProfile) {
-          console.log("Profile found after creation attempt:", newProfile.id)
-          // Update cache
-          profileCache.set(userId, { profile: newProfile, timestamp: Date.now() })
-          profileCreationAttempts.delete(userId)
-          return newProfile
-        }
-      } catch (err) {
-        console.error("Error creating profile:", err)
-      } finally {
-        // Clear the attempt flag
-        profileCreationAttempts.delete(userId)
+        initializeSampleData()
+        console.log("Local storage initialized with sample data")
+        setIsInitialized(true)
+      } catch (error) {
+        console.error("Error initializing local storage:", error)
+        // Even if there's an error, mark as initialized to prevent blocking
+        setIsInitialized(true)
       }
-
-      // After all attempts, make one final attempt to get the profile
-      const { data: finalProfile } = await supabase.from("profiles").select("*").eq("id", userId).single()
-
-      if (finalProfile) {
-        console.log("Profile found in final attempt:", finalProfile.id)
-        // Update cache
-        profileCache.set(userId, { profile: finalProfile, timestamp: Date.now() })
-        return finalProfile
-      }
-
-      console.error("Failed to ensure user profile after multiple attempts")
-      return null
-    } catch (err) {
-      console.error("Error ensuring user profile:", err)
-      profileCreationAttempts.delete(userId)
-      return null
     }
-  }
 
-  // Function to handle auth state changes
-  const handleAuthChange = async (event: string) => {
-    console.log("Auth state changed:", event)
+    initialize()
+  }, [])
 
-    if (event === "SIGNED_OUT") {
-      setUser(null)
-      setIsLoading(false)
-      router.refresh()
+  // Memoize the refreshSession function to avoid recreating it on each render
+  const refreshSession = useCallback(async () => {
+    if (!isInitialized) {
+      console.log("Waiting for initialization before refreshing session")
       return
     }
 
-    // For all other events, fetch the authenticated user
-    const authenticatedUser = await fetchAuthenticatedUser()
-    setUser(authenticatedUser)
-    setIsLoading(false)
-    router.refresh()
-  }
-
-  useEffect(() => {
-    const initializeAuth = async () => {
+    try {
       setIsLoading(true)
+      console.log("Refreshing session...")
 
-      try {
-        // Always fetch the authenticated user on initialization
-        const authenticatedUser = await fetchAuthenticatedUser()
-        setUser(authenticatedUser)
-      } catch (error) {
-        console.error("Error initializing auth:", error)
-      } finally {
-        setIsLoading(false)
+      const { session, user } = await getSession()
+      console.log("Session refresh result:", { hasSession: !!session, hasUser: !!user })
+
+      if (session && user) {
+        setUser(user)
+
+        // Get user profile
+        const profile = await getProfileById(user.id)
+        setUserProfile(profile)
+
+        // Get user role
+        const role = profile?.role || user.user_metadata?.role || null
+        const safeRole = RoleManagementService.getSafeRole(role)
+        console.log("User role detected:", safeRole)
+        setUserRole(safeRole)
+      } else {
+        // No session found, clear user state
+        console.log("No session found, clearing user state")
+        setUser(null)
+        setUserProfile(null)
+        setUserRole(null)
       }
+    } catch (error) {
+      console.error("Error refreshing session:", error)
+      // On error, clear user state to be safe
+      setUser(null)
+      setUserProfile(null)
+      setUserRole(null)
+    } finally {
+      setIsLoading(false)
     }
+  }, [isInitialized])
 
-    initializeAuth()
-
-    // Set up auth state change listener
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event) => {
-      await handleAuthChange(event)
-    })
-
-    return () => {
-      subscription.unsubscribe()
+  // Check for existing session after initialization
+  useEffect(() => {
+    if (isInitialized) {
+      refreshSession()
     }
-  }, [supabase, router])
+  }, [isInitialized, refreshSession])
 
   const signIn = async (email: string, password: string) => {
-    setIsLoading(true)
-    console.log("Attempting sign in for:", email)
-
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      setIsLoading(true)
+      console.log("Signing in with email:", email)
 
-      if (error) {
-        console.error("Sign in error:", error)
-        setIsLoading(false)
-        return { success: false, error }
+      const { success, user, error, profile } = await localSignIn(email, password)
+      console.log("Sign in result:", { success, hasUser: !!user, hasError: !!error })
+
+      if (success && user) {
+        setUser(user)
+
+        // Set user profile
+        setUserProfile(profile || null)
+
+        // Get user role
+        const role = profile?.role || user.user_metadata?.role || null
+        const safeRole = RoleManagementService.getSafeRole(role)
+        console.log("User role after sign in:", safeRole)
+        setUserRole(safeRole)
+
+        return {
+          success: true,
+          error: null,
+          role: safeRole,
+        }
       }
 
-      // After sign in, fetch the authenticated user
-      const authenticatedUser = await fetchAuthenticatedUser()
-
-      if (!authenticatedUser) {
-        console.error("Failed to get authenticated user after sign in")
-        setIsLoading(false)
-        return { success: false, error: new Error("Failed to get authenticated user") }
+      return {
+        success: false,
+        error: error || new Error("Unknown error during sign in"),
+        role: null,
       }
-
-      console.log("Sign in successful:", authenticatedUser.id)
-      setUser(authenticatedUser)
-
-      // Redirect to the appropriate dashboard based on role
-      const role = authenticatedUser.profile?.role || "tenant"
-      router.push(`/dashboard/${role}`)
-
-      return { success: true }
-    } catch (err) {
-      console.error("Unexpected error during sign in:", err)
-      setIsLoading(false)
-      return { success: false, error: err }
-    }
-  }
-
-  const signUp = async (email: string, password: string, userData: any) => {
-    setIsLoading(true)
-
-    try {
-      // Sign up with Supabase Auth with explicit metadata
-      const { error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: userData.name,
-            role: userData.role,
-          },
-        },
-      })
-
-      if (authError) throw authError
-
-      // After sign up, fetch the authenticated user to ensure profile creation
-      const authenticatedUser = await fetchAuthenticatedUser()
-
-      if (authenticatedUser) {
-        console.log("User signed up and profile created:", authenticatedUser.id)
-      }
-
-      // Redirect to login page
-      router.push("/login")
     } catch (error) {
-      console.error("Registration error:", error)
-      throw error
+      console.error("Error signing in:", error)
+      return { success: false, error: error as Error, role: null }
     } finally {
       setIsLoading(false)
     }
@@ -370,28 +163,121 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut()
+      setIsLoading(true)
+      await localSignOut()
+      setUser(null)
+      setUserProfile(null)
+      setUserRole(null)
 
-      // Verify sign out by checking authenticated user
-      const { data } = await supabase.auth.getUser()
+      // Reset redirect tracking
+      isRedirecting.current = false
+      redirectCount.current = 0
 
-      if (!data.user) {
-        console.log("Sign out successful, no user found")
-        setUser(null)
-        // Clear cache on sign out
-        profileCache.clear()
-        profileCreationAttempts.clear()
-        router.push("/")
-      } else {
-        console.error("Sign out failed, user still authenticated")
-      }
+      // Redirect to home page after sign out
+      router.push("/")
     } catch (error) {
       console.error("Error signing out:", error)
+      toast({
+        variant: "destructive",
+        title: "Sign out failed",
+        description: "There was a problem signing you out. Please try again.",
+      })
+    } finally {
+      setIsLoading(false)
     }
   }
 
+  // Safe redirect function to prevent loops
+  const safeRedirect = useCallback(
+    (path: string, reason: string) => {
+      const now = Date.now()
+
+      // Don't redirect if we're already redirecting
+      if (isRedirecting.current) {
+        console.log(`Skipping redirect to ${path} - already redirecting`)
+        return
+      }
+
+      // Don't redirect if we've redirected too recently (within 1 second)
+      if (now - lastRedirectTime.current < 1000) {
+        console.log(`Skipping redirect to ${path} - too soon after last redirect`)
+        return
+      }
+
+      // Don't redirect if we're already on this path
+      if (pathname === path) {
+        console.log(`Skipping redirect to ${path} - already on this path`)
+        return
+      }
+
+      // Track redirect count to detect loops
+      redirectCount.current += 1
+
+      // If we've redirected too many times in a short period, break the loop
+      if (redirectCount.current > 5) {
+        console.error("Detected redirect loop, breaking out")
+        redirectCount.current = 0
+
+        // Force to login as a fallback
+        if (path !== "/login") {
+          router.push("/login")
+        }
+        return
+      }
+
+      // Set redirecting state
+      isRedirecting.current = true
+      lastRedirectTime.current = now
+
+      console.log(`Redirecting to ${path} - reason: ${reason}`)
+      router.push(path)
+
+      // Reset redirecting state after a delay
+      setTimeout(() => {
+        isRedirecting.current = false
+      }, 1000)
+    },
+    [pathname, router],
+  )
+
+  // Handle automatic redirects based on auth state
+  useEffect(() => {
+    if (isLoading || !isInitialized) return
+
+    // Reset redirect count after loading completes
+    if (!isLoading) {
+      setTimeout(() => {
+        redirectCount.current = 0
+      }, 2000)
+    }
+
+    const isPublicPath = ["/", "/login", "/register", "/forgot-password", "/reset-password"].includes(pathname)
+    const isDashboardPath = pathname.startsWith("/dashboard")
+
+    // Only handle redirects if we're not already redirecting
+    if (isRedirecting.current) return
+
+    if (!user && isDashboardPath) {
+      // Not logged in and trying to access protected route
+      safeRedirect(`/login?redirect=${encodeURIComponent(pathname)}`, "Not logged in, accessing dashboard")
+    } else if (user && userRole && isPublicPath && pathname !== "/") {
+      // Logged in and on a public page (except homepage)
+      safeRedirect(`/dashboard/${userRole}`, "Logged in on public page")
+    }
+  }, [user, userRole, isLoading, pathname, safeRedirect, isInitialized])
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, signIn, signUp, signOut, refreshProfile }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        userProfile,
+        userRole,
+        isLoading,
+        signIn,
+        signOut,
+        refreshSession,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
@@ -399,10 +285,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext)
-
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider")
   }
-
   return context
 }
+
+// Add default export for the AuthProvider
+export default AuthProvider

@@ -2,15 +2,10 @@ import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Bed, Building } from "lucide-react"
-import type { Database } from "@/lib/database.types"
-
-type Room = Database["public"]["Tables"]["rooms"]["Row"] & {
-  room_images?: Database["public"]["Tables"]["room_images"]["Row"][]
-  properties?: Database["public"]["Tables"]["properties"]["Row"]
-}
+import type { LocalRoom } from "@/lib/local-storage/storage-service"
 
 interface RoomCardProps {
-  room: Room
+  room: LocalRoom
 }
 
 export function RoomCard({ room }: RoomCardProps) {

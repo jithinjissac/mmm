@@ -7,7 +7,7 @@ export function Footer() {
       <div className="container flex flex-col items-center justify-between gap-4 md:flex-row">
         <div className="flex items-center gap-2">
           <Home className="h-6 w-6" />
-          <span className="text-lg font-bold">UK Rental Solution</span>
+          <span className="text-lg font-bold">ARU Rental App</span>
         </div>
         <nav className="flex gap-4 sm:gap-6">
           <Link href="/terms" className="text-sm text-muted-foreground hover:underline">
@@ -21,7 +21,7 @@ export function Footer() {
           </Link>
         </nav>
         <p className="text-sm text-muted-foreground">
-          © {new Date().getFullYear()} UK Rental Solution. All rights reserved.
+          © {new Date().getFullYear()} ARU Rental App. All rights reserved.
         </p>
       </div>
     </footer>

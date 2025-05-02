@@ -1,15 +1,13 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { uploadFile } from "@/lib/local-storage/upload-service"
+import { getSession } from "@/lib/local-storage/auth-service"
 
 export async function POST(request: Request) {
   try {
-    const supabase = createServerSupabaseClient()
-
     // Check if user is authenticated
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (!session) {
+    const { user } = await getSession()
+
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -21,24 +19,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
-    // Generate a unique file name
-    const fileExt = file.name.split(".").pop()
-    const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`
+    // Upload the file
+    const url = await uploadFile(file)
 
-    // Upload the file to Supabase Storage
-    const { data, error } = await supabase.storage.from("property-images").upload(fileName, file)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    // Get the public URL
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("property-images").getPublicUrl(data.path)
-
-    return NextResponse.json({ url: publicUrl })
-  } catch (error) {
+    return NextResponse.json({ url })
+  } catch (error: any) {
     console.error("Error uploading file:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }

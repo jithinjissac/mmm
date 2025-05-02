@@ -25,6 +25,7 @@ export default function AddRoomPage() {
 
   const [properties, setProperties] = useState<Property[]>([])
   const [isLoadingProperties, setIsLoadingProperties] = useState(true)
+  const [propertyValidationError, setPropertyValidationError] = useState("")
 
   const [formData, setFormData] = useState({
     property_id: "",
@@ -72,6 +73,11 @@ export default function AddRoomPage() {
   }
 
   const handleSelectChange = (name: string, value: string) => {
+    // Clear property validation error when property is selected
+    if (name === "property_id" && value) {
+      setPropertyValidationError("")
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -119,14 +125,15 @@ export default function AddRoomPage() {
     setIsSubmitting(true)
 
     try {
+      // Validate property selection
+      if (!formData.property_id) {
+        setPropertyValidationError("Please select a property")
+        setIsSubmitting(false)
+        return
+      }
+
       // Validate form
-      if (
-        !formData.property_id ||
-        !formData.name ||
-        !formData.room_type ||
-        formData.rent <= 0 ||
-        formData.deposit <= 0
-      ) {
+      if (!formData.name || !formData.room_type || formData.rent <= 0 || formData.deposit <= 0) {
         toast({
           title: "Missing required fields",
           description: "Please fill in all required fields.",
@@ -255,7 +262,7 @@ export default function AddRoomPage() {
                     value={formData.property_id}
                     onValueChange={(value) => handleSelectChange("property_id", value)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className={propertyValidationError ? "border-destructive" : ""}>
                       <SelectValue placeholder="Select property" />
                     </SelectTrigger>
                     <SelectContent>
@@ -266,6 +273,7 @@ export default function AddRoomPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {propertyValidationError && <p className="text-sm text-destructive">{propertyValidationError}</p>}
                 </div>
 
                 <div className="space-y-2">
