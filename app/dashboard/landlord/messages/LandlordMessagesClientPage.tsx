@@ -1,121 +1,161 @@
 "use client"
 
-import { MessagingLayout } from "@/components/messaging/messaging-layout"
-import { useState } from "react"
-import { Loader2 } from "lucide-react"
-import { useAuth, WithAuthProtection } from "@/lib/auth"
+import { useEffect, useState } from "react"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Send } from "lucide-react"
 
-// Mock messages data
-const mockMessages = [
-  {
-    id: 1,
-    sender: "John Smith",
-    senderRole: "tenant",
-    senderAvatar: "/cozy-city-studio.png",
-    property: "Riverside Apartments",
-    room: "Room 2",
-    subject: "Water pressure issue",
-    message: "The water pressure in the shower has been very low for the past few days. Could you please look into it?",
-    status: "Unread",
-    timestamp: "2023-06-03T14:30:00",
-    isUrgent: false,
-  },
-  {
-    id: 2,
-    sender: "Michael Brown",
-    senderRole: "tenant",
-    senderAvatar: "/cozy-single-bedroom.png",
-    property: "City View Flat",
-    room: "Room 1",
-    subject: "Heating not working",
-    message:
-      "The heating in my room is not working at all. It's getting very cold, especially at night. Can this be fixed as soon as possible?",
-    status: "Unread",
-    timestamp: "2023-06-02T09:15:00",
-    isUrgent: true,
-  },
-  {
-    id: 3,
-    sender: "Sarah Johnson",
-    senderRole: "tenant",
-    senderAvatar: "/cozy-eclectic-living-room.png",
-    property: "Park House",
-    room: "Room 4",
-    subject: "Noise complaint",
-    message:
-      "I wanted to let you know that there has been excessive noise coming from Room 5 late at night for the past week. It's making it difficult for me to sleep.",
-    status: "Read",
-    timestamp: "2023-06-01T18:45:00",
-    isUrgent: false,
-  },
-  {
-    id: 4,
-    sender: "Maintenance Team",
-    senderRole: "maintenance",
-    senderAvatar: "/leaky-pipe-under-sink.png",
-    property: "Garden Cottage",
-    room: "Living Room",
-    subject: "Repair completed",
-    message:
-      "We've completed the repair of the electrical outlet in the living room. Everything is working properly now. Please let us know if you notice any issues.",
-    status: "Read",
-    timestamp: "2023-05-30T11:20:00",
-    isUrgent: false,
-  },
-  {
-    id: 5,
-    sender: "Admin",
-    senderRole: "admin",
-    senderAvatar: "/mystical-forest-spirit.png",
-    property: "All Properties",
-    room: "N/A",
-    subject: "System maintenance",
-    message:
-      "We will be performing system maintenance this weekend. The property management portal will be unavailable from Saturday 10 PM to Sunday 2 AM.",
-    status: "Read",
-    timestamp: "2023-05-28T16:00:00",
-    isUrgent: false,
-  },
-]
+interface LandlordMessagesClientPageProps {
+  conversations: any[]
+  currentUserId: string
+}
 
-export default function LandlordMessagesClientPage() {
-  const { user, isLoading } = useAuth()
-  const [messages, setMessages] = useState(mockMessages)
-  const [searchTerm, setSearchTerm] = useState("")
+export default function LandlordMessagesClientPage({ conversations, currentUserId }: LandlordMessagesClientPageProps) {
+  const [message, setMessage] = useState("")
+  const [selectedConversation, setSelectedConversation] = useState<any>(null)
+  const [messages, setMessages] = useState<any[]>([])
 
-  const filteredMessages = messages.filter(
-    (message) =>
-      message.sender.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      message.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      message.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      message.property.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  useEffect(() => {
+    if (selectedConversation) {
+      // Mock fetching messages for the selected conversation
+      const mockMessages = [
+        { id: 1, senderId: selectedConversation.participants[0].user_id, content: "Hello!", createdAt: new Date() },
+        { id: 2, senderId: currentUserId, content: "Hi there!", createdAt: new Date() },
+      ]
+      setMessages(mockMessages)
+    }
+  }, [selectedConversation, currentUserId])
 
-  const unreadMessages = filteredMessages.filter((message) => message.status === "Unread")
-  const readMessages = filteredMessages.filter((message) => message.status === "Read")
-  const urgentMessages = filteredMessages.filter((message) => message.isUrgent)
-
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-[50vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-2">Loading messages...</span>
-      </div>
-    )
+  const handleSendMessage = () => {
+    if (message && selectedConversation) {
+      // Mock sending message
+      const newMessage = {
+        id: messages.length + 1,
+        senderId: currentUserId,
+        content: message,
+        createdAt: new Date(),
+      }
+      setMessages([...messages, newMessage])
+      setMessage("")
+    }
   }
 
   return (
-    <WithAuthProtection requiredRole="landlord">
-      <div className="container mx-auto py-6 space-y-6">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight">Messages</h1>
-          <p className="text-muted-foreground">
-            Communicate with your tenants about properties, maintenance, and more.
-          </p>
+    <div className="container mx-auto p-4 space-y-6">
+      <h1 className="text-2xl font-bold tracking-tight">Messages</h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Conversation List */}
+        <div className="md:col-span-1">
+          <Card>
+            <CardHeader>
+              <CardTitle>Conversations</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {conversations.map((conversation) => (
+                <button
+                  key={conversation.id}
+                  className={`w-full text-left p-2 rounded hover:bg-accent hover:text-accent-foreground ${
+                    selectedConversation?.id === conversation.id ? "bg-accent text-accent-foreground" : ""
+                  }`}
+                  onClick={() => setSelectedConversation(conversation)}
+                >
+                  {conversation.participants.map((participant: any) => {
+                    if (participant.user_id !== currentUserId) {
+                      return (
+                        <div key={participant.user_id} className="flex items-center space-x-2">
+                          <Avatar>
+                            <AvatarImage
+                              src={participant.users?.avatar_url || ""}
+                              alt={participant.users?.first_name}
+                            />
+                            <AvatarFallback>
+                              {participant.users?.first_name?.charAt(0)}
+                              {participant.users?.last_name?.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span>
+                            {participant.users?.first_name} {participant.users?.last_name}
+                          </span>
+                        </div>
+                      )
+                    }
+                    return null
+                  })}
+                </button>
+              ))}
+            </CardContent>
+          </Card>
         </div>
 
-        <MessagingLayout />
+        {/* Message Area */}
+        <div className="md:col-span-3">
+          {selectedConversation ? (
+            <Card className="flex flex-col h-full">
+              <CardHeader>
+                <CardTitle>
+                  {selectedConversation.participants.map((participant: any) => {
+                    if (participant.user_id !== currentUserId) {
+                      return (
+                        <div key={participant.user_id} className="flex items-center space-x-2">
+                          <Avatar>
+                            <AvatarImage
+                              src={participant.users?.avatar_url || ""}
+                              alt={participant.users?.first_name}
+                            />
+                            <AvatarFallback>
+                              {participant.users?.first_name?.charAt(0)}
+                              {participant.users?.last_name?.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span>
+                            {participant.users?.first_name} {participant.users?.last_name}
+                          </span>
+                        </div>
+                      )
+                    }
+                    return null
+                  })}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex-grow overflow-y-auto">
+                <div className="space-y-2">
+                  {messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`p-2 rounded-lg ${
+                        msg.senderId === currentUserId ? "bg-blue-100 ml-auto text-right" : "bg-gray-100 mr-auto"
+                      }`}
+                    >
+                      {msg.content}
+                      <p className="text-xs text-muted-foreground">{new Date(msg.createdAt).toLocaleTimeString()}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+              <CardFooter>
+                <div className="flex items-center space-x-2 w-full">
+                  <Input
+                    type="text"
+                    placeholder="Type your message..."
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                  />
+                  <Button onClick={handleSendMessage} disabled={!message}>
+                    Send <Send className="ml-2 h-4 w-4" />
+                  </Button>
+                </div>
+              </CardFooter>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="text-center">Select a conversation to view messages.</CardContent>
+            </Card>
+          )}
+        </div>
       </div>
-    </WithAuthProtection>
+    </div>
   )
 }
